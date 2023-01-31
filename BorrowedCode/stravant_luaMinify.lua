@@ -27,6 +27,11 @@ SOFTWARE.
 ]]
 return function(...)
 
+-- otherwise undeclared functions:
+local lookupify, CountTable, FormatTableInt, FormatTable, CreateLuaTokenStream
+  , CreateLuaParser, VisitAst, AddVariableInfo, PrintAst
+  , tableexpr
+
 function lookupify(tb)
 	for _, v in pairs(tb) do
 		tb[v] = true
@@ -294,10 +299,10 @@ function CreateLuaTokenStream(text)
                   local command = text:sub(p,n)
                   --print("testing command: " .. command .. "==" .. test)
                   if command == 'minStrip' then
-                    print("Begin minStrip at " .. p)
+                    --print("Begin minStrip at " .. p)
                     minStrip = true
                   elseif command == 'endMinStrip' then
-                    print("End minStrip at " .. p)
+                    --print("End minStrip at " .. p)
                     minStrip = false
                   end                  
                 end
@@ -1627,6 +1632,7 @@ function AddVariableInfo(ast)
 			ReferenceLocationList = {markLocation()};
 		}
 		function var:Rename(newName)
+      self.OldName = self.OldName or self.Name
 			self.Name = newName
 			for _, renameFunc in pairs(self.RenameList) do
 				renameFunc(newName)
@@ -1656,6 +1662,7 @@ function AddVariableInfo(ast)
 			ReferenceLocationList = {};
 		}
 		function var:Rename(newName)
+      self.OldName = self.OldName or self.Name
 			self.Name = newName
 			for _, renameFunc in pairs(self.RenameList) do
 				renameFunc(newName)
@@ -1887,19 +1894,22 @@ end
 
 -- Prints out an AST to a string
 function PrintAst(ast, minFile)
-  print("minFile: " .. tostring(minFile) .. " " .. type(minFile))
+  --print("minFile: " .. tostring(minFile) .. " " .. type(minFile))
 
 	local printStat, printExpr;
+  local outLength = 0
 
 	local function printt(tk)
 		if not tk.LeadingWhite or not tk.Source then
 			error("Bad token: "..FormatTable(tk))
 		end
-		io.write(tk.LeadingWhite)
-		io.write(tk.Source)
+    outLength = outLength + string.len(tk.LeadingWhite) + string.len(tk.Source)
     if minFile then
       minFile:write(tk.LeadingWhite)
       minFile:write(tk.Source)
+    else
+      io.write(tk.LeadingWhite)
+      io.write(tk.Source)
     end
 	end
 
@@ -2159,7 +2169,14 @@ function PrintAst(ast, minFile)
 		end	
 	end
 
+  --print("calling printStat")
 	printStat(ast)
+  print("")
+  print("minFile: " .. tostring(minFile) .. " " .. tostring(outLength) .. " bytes written")
+  
+  for k, v in pairs(ast) do
+    --print("ast." .. k .. " = [" .. tostring(v) .. "] (" .. type(v) .. ")")
+  end
 end
 
 -- Adds / removes whitespace in an AST to put it into a "standard formatting"
@@ -2983,6 +3000,7 @@ local function MinifyVariables(globalScope, rootScope)
 		end
 	end
 	doRenameScope(rootScope)
+
 end
 
 local function MinifyVariables_2(globalScope, rootScope)
@@ -3141,9 +3159,9 @@ local function MinifyVariables_2(globalScope, rootScope)
 
 
 	-- -- 
-	-- print("Total Variables: "..#allVariables)
-	-- print("Total Range: "..rootScope.BeginLocation.."-"..rootScope.EndLocation)
-	-- print("")
+	print("Total Variables: "..#allVariables)
+	print("Total Range: "..rootScope.BeginLocation.."-"..rootScope.EndLocation)
+	print("")
 	-- for _, var in pairs(allVariables) do
 	-- 	io.write("`"..var.Name.."':\n\t#symbols: "..#var.RenameList..
 	-- 		"\n\tassigned to: "..tostring(var.AssignedTo))
@@ -3224,8 +3242,28 @@ local function usageError()
 			"    find-replacable ones to aide in reverse engineering minified code.\n", 0)
 end
 
+
+local function printScopeVars(scope, scopeName, print)
+  print(scopeName .. "[" 
+    .. (scope.BeginLocation or "??")
+    .. "-"
+    .. (scope.EndLocation or "??")
+    .. "]"
+    )
+  for _, var in pairs(scope.VariableList or scope) do
+    print(var.Type .. " " .. var.Name 
+      .. (var.OldName and ("<-" .. var.OldName) or " unchanged ")
+      .. "(Usages:" .. var.UseCount 
+      .. (var.AssignedTo and ")" or "not assigned")
+      )
+  end
+  for i, childScope in pairs(scope.ChildScopeList or {}) do
+    printScopeVars(childScope, scopeName .. ":" .. (childScope.Depth or "??") .. "-" .. i, print)
+  end
+end
+
 local args = {...}
-print("#args: ", #args)
+--print("#args: ", #args)
 print((table.unpack or unpack)(args))
 if #args < 2 then
 	usageError()
@@ -3244,6 +3282,18 @@ local function minify(ast, global_scope, root_scope, minFile)
 	MinifyVariables(global_scope, root_scope)
 	StripAst(ast)
 	PrintAst(ast, minFile)
+
+  local debugPrint = minFile and 
+  function (text)
+    minFile:write(text .. "\n")
+  end
+  or print
+
+  debugPrint("")
+  debugPrint("Scope variable info and rename assignments")
+
+  printScopeVars(global_scope, "Global Scope", debugPrint)
+  printScopeVars(root_scope, "Root Scope", debugPrint)
 end
 
 local function beautify(ast, global_scope, root_scope)

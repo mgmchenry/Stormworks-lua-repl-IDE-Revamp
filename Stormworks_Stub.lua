@@ -1,9 +1,161 @@
 _ENV = _G
 
+-- why is repl.it on Lua 5.1 still?
+-- nvm -
+--Forked a lua 5.4 repl, so this should not be needed now:
+-- todo - test removing this pack/unpack bandaid
+local pack = pack or function(...)
+  return { n = select("#", ...), ... }
+end
 table.pack = table.pack or pack
-pack,unpack = nil, nil
+table.unpack = table.unpack or unpack
 
+pack,unpack = nil, nil
 local pack, unpack = table.pack, table.unpack
+
+_ENV = _G
+
+local writeLine = print
+local expand = function(list, depth, prefix)
+  depth = depth or 1
+  prefix = (prefix or "") .. "->"
+  for k,v,sv in pairs(list) do
+    sv = string.sub(tostring(v),1,20)
+    --print("key",k, "value", v)
+    writeLine(prefix .. string.format("key: %s Value: %s Type: %s", k, sv, type(v)))
+    if depth>1 and type(v)=="table" then
+	    if v~=_ENV and v~=list then
+        writeLine(prefix .. string.format("  %s table values", k))
+		    expand(v, depth-1, prefix)
+      else
+        writeLine(prefix .. string.format("  %s is a nested table", k))
+	    end
+    end
+  end
+  if # list > 0 then
+    writeLine("Array part size: "..tostring(# list))
+    for i,v in ipairs(list) do
+      v = string.sub(tostring(v),1,20)
+      writeLine(" i:".. string.format("%02i",i) .." Value: "..v)
+    end
+  end
+end
+
+
+local function getStackInfo(levelsUp)
+    local inspectLevel = 1 + (levelsUp or 1)
+    local info, stackInfo = {}, {}
+
+    while info do
+      info = debug.getinfo(inspectLevel+1)
+      if not info then
+        --print("End of stack: " .. tostring(inspectLevel))
+      else
+        inspectLevel = inspectLevel + 1
+        local infoText = string.format(
+          info.currentline > 0 and "%s:%s " or "%s:(%s) "
+          , info.short_src, tostring(info.currentline)
+        )
+           
+        infoText = infoText .. "in "
+          .. (
+          info.what=="main" and "main chunk " 
+            or info.what=="Lua" and info.name==nil and "lua "
+            or info.what=="Lua" and ""
+            or (info.what .. " ")
+          ) .. (
+          info.namewhat=="" and ""
+            or info.namewhat=="upvalue" and "local "
+            or (info.namewhat .. " ") 
+          )
+
+        infoText = infoText ..
+          type(info.func) .. (
+            info.name==nil and ""
+            or (" " .. info.name)
+          ) .. (
+            type(info.func)=="function" and "()"
+            or ""
+          )
+          
+        infoText = infoText .. string.format(
+          info.linedefined>0 and " [lines %i-%i]" or ""
+          , info.linedefined, info.lastlinedefined
+        )
+        stackInfo[#stackInfo+1] = infoText
+        --print(infoText)
+      end
+    end
+    return stackInfo
+end
+
+local function printStackInfo(levelsUp, levelsSkipped)
+    local stackInfo = getStackInfo(levelsUp)
+    for level=2,#stackInfo-(levelsSkipped or 0) do
+      print(stackInfo[level])
+    end
+end
+
+
+--writeLine("_G global values")
+--expand(_G, 3)
+--die()
+
+local __STRICT = false
+local function enableStrictLua()
+  -- strict.lua
+  -- checks uses of undeclared global variables
+  -- All global variables must be 'declared' through a regular assignment
+  -- (even assigning nil will do) in a main chunk before being used
+  -- anywhere or assigned to inside a function.
+  --
+  local mt = getmetatable(_G)
+  if mt == nil then
+    mt = {}
+    setmetatable(_G, mt)
+  end
+
+  __STRICT = true
+    
+  mt.__declared = {}
+
+  mt.__newindex = function (t, n, v)
+    if __STRICT and not mt.__declared[n] then
+      local callerInfo = debug.getinfo(2, "S")
+      if callerInfo==nil then
+        if string.sub(n,1,7)=="_PROMPT" then
+          --print("setting prompt on exit is normal")
+        else
+          print("attempt to assign undeclared variable and callerInfo is nil")
+          --print(debug.traceback())
+          printStackInfo(1,0)
+          print(t,n,v)
+        end
+      elseif callerInfo.what ~= "main" and callerInfo.what ~= "C" then
+        --error
+        print("assign to undeclared variable '"..n.."'", 2)
+      end
+      mt.__declared[n] = true
+    end
+    rawset(t, n, v)
+  end
+
+    
+  mt.__index = function (t, n)
+    if not mt.__declared[n] and debug.getinfo(2, "S").what ~= "C" then
+      --error
+      print("variable '"..n.."' is not declared", 2)
+      printStackInfo(1,0)
+    end
+    return rawget(t, n)
+  end
+
+  local function global(...)
+    for _, v in ipairs{...} do mt.__declared[v] = true end
+  end
+end
+
+enableStrictLua()
 
 __debug = {
   AlertIf = function (condition, ...)
@@ -163,6 +315,7 @@ output = {
   setBool=f("setBool", function(channel, value) outBools[channel]=value end, true)
 }
 local drawIsQuiet = true
+local propIsQuiet = true
 screen = {
   drawTextBox=f("drawTextBox", nil, drawIsQuiet),
   drawText=f("drawText", nil, drawIsQuiet),
@@ -194,7 +347,7 @@ property = {
   end)
   , getText=f("getText", function(key) 
     return propValues[key] 
-  end)
+  end, propIsQuiet)
   , getBool=f("getBool", function(key) 
     return propValues[key] or false
   end)
@@ -271,3 +424,5 @@ function runTest(func, message)
     error(err)
   end
 end
+
+return "swAPIRetVal"

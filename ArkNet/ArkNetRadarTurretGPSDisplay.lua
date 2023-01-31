@@ -2,6 +2,26 @@
 -- V 01.01 b0 Michael McHenry 2022-10-07
 source={"ArkNetRadGPSTurretx01e","repl.it/@mgmchenry"}
 
+
+--[[minStrip]]
+  -- minify helping property text assignments
+propValues["ArkGF0"] =
+  "input.getNumber,input.getBool,output.setNumber,output.setBool,property.getNumber,string.format,type,string.sub"
+propValues["ArkMFb"] =
+  "abs,min,max,sqrt,ceil,floor,sin,cos,atan,asin,pi"
+propValues["ArkSF0"] =
+  "setColor,drawLine,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight"
+--[[endMinStrip]]
+--[[
+  minify progress
+  20220211a: 3750 bytes : baseline
+  20220211b: 3649 -101: set property value ArkGF0
+  20220211c: 3614 -35: set property value ArkMF0
+  20220211d: 3533 -81: set property value ArkSF0zx
+  20220211e: 4513 +980: added basic vector library  
+  20220211f: 4418 -95: remove "math." from vector library
+]]
+
 --[[
 
 ArkNet Radar GPS Turret Control MC Inputs and Outputs
@@ -170,17 +190,21 @@ local G, prop_getText, gmatch, unpack
   , "string", "table", "number"
 
 function main()
-  local abs, min, max, sqrt, ceil, floor, sin, cos, atan, pi
-    = getTableValues(math, --prop_getText("ArkMF0")
-    "abs,min,max,sqrt,ceil,floor,sin,cos,atan,pi")
+  local abs, min, max, sqrt, ceil, floor, sin, cos, atan, asin, pi
+    = getTableValues(math, 
+    prop_getText("ArkMFb")
+    --"abs,min,max,sqrt,ceil,floor,sin,cos,atan,asin,pi")
+    )
   _ = floor(pi)==3 or pi() -- sanity check
 
   --local radPerTurn, degPerTurn = pi * 2, 360
 
   local getNumber, getBool, setNumber, setBool, property_getNumber
   , format, type, string_sub
-    = getTableValues(G, --prop_getText("ArkGF0")
-      "input.getNumber,input.getBool,output.setNumber,output.setBool,property.getNumber,string.format,type,string.sub")
+    = getTableValues(G, 
+      prop_getText("ArkGF0")
+--      "input.getNumber,input.getBool,output.setNumber,output.setBool,property.getNumber,string.format,type,string.sub")
+      )
 
   local I, O, Ib, Ob -- composite input/output tables
     , numberList
@@ -191,7 +215,7 @@ function main()
     , tc -- turretControl 
 
     -- functions defined below
-    , getFlags, updateTelemetry
+    , getFlags, telemetryData
     = {},{},{},{}
     , {}
     , 0, -1, -1
@@ -227,6 +251,11 @@ function main()
       , _altC, _pitch, _roll, _yaw -- index 1-6
       = unpack(numberList)
     
+--vector functions
+local vec3, vec3_TransformPoints, cross
+  , normalizeVec3, vec3_DotProduct
+  -- , vec3_getFaceNormal
+
     function updateTelemetry()
     
       lastTickData = dataSamples[bufferCursor] or {}
@@ -239,8 +268,8 @@ function main()
       end
 
       thisTickData[_altC] = (thisTickData[_altL]+thisTickData[_altR])/2
-      thisTickData[_pitch] = math.asin((thisTickData[_altF]-thisTickData[_altC])*2)/pi/2
-      thisTickData[_roll] = math.asin((thisTickData[_altL]-thisTickData[_altC])*2 
+      thisTickData[_pitch] = asin((thisTickData[_altF]-thisTickData[_altC])*2)/pi/2
+      thisTickData[_roll] = asin((thisTickData[_altL]-thisTickData[_altC])*2 
         / cos(thisTickData[_pitch]))/pi/2
         
       if thisTickData[_tiltUp] < 0 then
@@ -257,20 +286,183 @@ function main()
       end
     end
 
-    function drawTelemetry(drawText)
-      local textPosX, textPosY = 3,20 
+    
+local red,green,blue, white, pointsArray, linesArray=
+  {255,0,0}, {0,255,0}, {0,0,255}, {255,255,255}
+
+
+    function drawTelemetry(drawText, drawLine, setColorRGB)
+      local textPosX, textPosY
+        , ssPoints
+        , axisRotations 
+        = 3,20
+        , {}
+        , vec3(0, thisTickData[_pitch],thisTickData[_roll])
       local function printText(text, color)
         drawText(textPosX, textPosY, text)
         textPosY = textPosY+6
       end
+
+      -- axisRotations, points, transformedPoints, rangeMin, rangeMax, offset, screenWidth, screenHeight)
+      vec3_TransformPoints(axisRotations, pointsArray, ssPoints, 1, #pointsArray, 0, 288,288)
+
+      
+      for i,line in pairs(linesArray) do
+        if line[3]~=nil then setColorRGB(line[3]) end
+        drawLine(ssPoints[line[1]].x, ssPoints[line[1]].y, ssPoints[line[2]].x, ssPoints[line[2]].y)
+      end
+      
+--[[minStrip]]
       printText(format("XY %.2f,%.2f", thisTickData[_gpsX], thisTickData[_gpsY]))
       printText(format("Alt: %.2f", thisTickData[_altC]))
       printText(format("Roll: %.2f", thisTickData[_roll] * 360))
       printText(format("Pitch: %.2f", thisTickData[_pitch] * 360))
       printText(format("Compass: %.2f", thisTickData[_compass] * 360))
 
+--[[endMinStrip]]
+
     end
 
+
+function vec3(xVal,yVal,zVal)
+  return {x=xVal,y=yVal,z=zVal}
+end
+
+--[[
+local vec2 = function(xVal, yVal)
+  return {x=xVal, y=yVal}
+end
+
+function getFaceNormal(point1, point2, point3)
+  v1 = vec3(point2.x-point1.x, point2.y-point1.y, point2.z-point1.z)
+  v2 = vec3(point3.x-point2.x, point3.y-point2.y, point3.z-point2.z)
+  return normalizeVec3(cross(v1, v2))
+end
+--]]
+
+function normalizeVec3(point1)
+  m = sqrt(point1.x*point1.x+point1.y*point1.y + point1.z*point1.z)
+  return vec3(point1.x/m, point1.y/m, point1.z/m)
+end
+
+function vec3_DotProduct(point1, point2)
+  return point1.x*point2.x + point1.y*point2.y + point1.z * point2.z
+end
+
+
+-- the points array contains all the points in the 3D
+-- scene.  These 8 make a square on the screen.
+pointsArray = {
+  vec3(-50,-50,-50),
+  vec3(50,-50,-50),
+  vec3(50,-50,50),
+  vec3(-50,-50,50),
+  vec3(-50,50,-50),
+  vec3(50,50,-50),
+  vec3(50,50,50),
+  vec3(-50,50,50)
+}
+linesArray = {
+  -- Top of box
+  {1,2,green},
+  {2,3,green},
+  {3,4,green},
+  {4,1,green},
+  -- bottom
+  {5,6,red},
+  {6,7,red},
+  {7,8,red},
+  {8,5,red},
+  -- connecting bottom and top
+  {1,5,white},
+  {2,6,white},
+  {3,7,blue},
+  {4,8,blue}
+}
+
+-- conversion function for changing an array of 3D points to an
+-- array of 2D points which is to be returned.
+vec3_TransformPoints = function(axisRotations, points, transformedPoints, rangeMin, rangeMax, offset, screenWidth, screenHeight)
+  rangeMin, rangeMax
+    = rangeMin or 1
+    , rangeMax or #points
+
+  -- Math calcs for angles - sin and cos for each (trig)
+  -- this will be the only time sin or cos is used for the
+  -- entire portion of calculating all rotations
+
+
+  local sx, cx, sy, cy, sz, cz 
+    = sin(axisRotations.x)
+    , cos(axisRotations.x)
+    , sin(axisRotations.y)
+    , cos(axisRotations.y)
+    , sin(axisRotations.z)
+    , cos(axisRotations.z)
+
+  --[[ original form:
+  local sx = sin(axisRotations.x)
+  local cx = cos(axisRotations.x)
+  local sy = sin(axisRotations.y)
+  local cy = cos(axisRotations.y)
+  local sz = sin(axisRotations.z)
+  local cz = cos(axisRotations.z)
+  ]]
+
+  -- a couple of variables to be used in the looping
+  -- of all the points in the transform process
+  local x,y,z, xy,xz, yx,yz, zx,zy, scaleRatio
+  local halfWidth, halfHeight, focalLength 
+  = screenWidth / 2
+  , screenHeight / 2
+  , 300
+  -- loop through all the points in your object/scene/space
+  -- whatever - those points passed - so each is transformed
+  for i = rangeMin, rangeMax do
+    --apply Math to making transformations
+    -- based on rotations
+    -- assign variables for the current x, y and z
+    x = points[i].x
+    y = points[i].y
+    z = points[i].z
+
+    -- perform the rotations around each axis
+    -- rotation around x
+    xy = cx*y - sx*z
+    xz = sx*y + cx*z
+    -- rotation around y
+    yz = cy*xz - sy*x
+    yx = sy*xz + cy*x
+    -- rotation around z
+    zx = cz*yx - sz*xy
+    zy = sz*yx + cz*xy
+
+    -- now determine perspective scaling factor
+    -- yz was the last calculated z value so its the
+    -- final value for z depth
+    scaleRatio = focalLength/(focalLength + yz) * (screenWidth/288)
+    -- assign the new x and y
+    x = zx*scaleRatio
+    y = zy*scaleRatio
+    -- create transformed 2D point with the calculated values
+    -- adding it to the array holding all 2D points
+    transformedPoints[i] = vec3(x + halfWidth, y + halfHeight, yz)
+    transformedPoints[i].p = vec3(zx,zy,yz)
+  end
+  -- after looping return the array of points as they
+  -- exist after the rotation and scaling
+  return transformedPoints
+end
+
+
+
+function cross(v,w)
+  return vec3(
+    v.y*w.z - v.z*w.y,
+    v.z*w.x - v.x*w.z,
+    v.x*w.y - v.y*w.x
+  )
+end
 
 
     telData.API={updateTelemetry, drawTelemetry}
@@ -353,7 +545,8 @@ function main()
 
     
     
-    local stickyX, stickyY = property_getNumber("StickX") or 0, property_getNumber("StickY") or 0
+    local stickyX, stickyY = 0,0
+    --property_getNumber("StickX") or 0, property_getNumber("StickY") or 0
     cz=1-clamp(sqrt(abs(cx*cy))*2,0,.75)
     if s1.h[4] ~= s2.h[4] then cz=0 end
     tc[1]=ts[2]*-12*cz-cx
@@ -392,9 +585,11 @@ function main()
     , drawRect, drawRectF,drawTriangleF    
     ,drawText,drawTextBox  
     , screen_getWidth, screen_getHeight
-    = 255, getTableValues(screen,--prop_getText("ArkSF0")
---      "setColor,drawLine,drawCircle,drawCircleF,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight")
-      "setColor,drawLine,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight")
+    = 255, getTableValues(screen,
+      prop_getText("ArkSF0")
+      --"setColor,drawLine,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight"
+      )
+--  originally was:    "setColor,drawLine,drawCircle,drawCircleF,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight")
 
     local cSolidWhite
       , cRed, cGreen, cBlue, cMagenta
@@ -426,7 +621,7 @@ function onDraw()
   --local rng, rX, rY=unpack(ts)
 
   drawText(3, 12, "GPSDISPLAY")
-  drawTelemetry(drawText)
+  drawTelemetry(drawText, drawLine, betterSetColor)
 
   --[[
 	if w < 64 then
@@ -571,6 +766,7 @@ end
       drawLine(x,y,w,h)
     end
 
+--[[
     function betterDrawRect(x,y,w,h,color,filled)
       if color then betterSetColor(color) end
       if filled or w<2 or h<2 then
@@ -579,6 +775,7 @@ end
         drawRect(x,y,w-1,h-1)
       end
     end
+--]]
 
   end
 

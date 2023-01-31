@@ -2,7 +2,25 @@
 -- V 01.01 b0 Michael McHenry 2022-10-07
 source={"ArkNetSasHostx01c","repl.it/@mgmchenry"}
 
--- dofile("BorrowedCode/stravant_luaMinify.lua")("minify", "ArkNet/ArkNetHostAircraftControl.lua")
+--[[minStrip]]
+  -- minify helping property text assignments
+propValues["ArkGF0"] =
+  "input.getNumber,input.getBool,output.setNumber,output.setBool,property.getNumber,string.format,type,string.sub"
+  --"input.getNumber,input.getBool,output.setNumber,output.setBool,string.format,type,map.screenToMap,map.mapToScreen"
+-- ArkMF0 = abs,min,max,sqrt,ceil,floor,sin,cos,atan,pi
+propValues["ArkMFb"] =
+  "abs,min,max,sqrt,ceil,floor,sin,cos,atan,asin,pi"
+propValues["ArkSF0"] =
+  "setColor,drawLine,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight"
+
+  --was:"setColor,drawLine,drawCircle,drawCircleF,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getH33eight"
+--[[endMinStrip]]
+--[[
+  minify progress
+  20220214a: 4439 bytes : baseline
+  20220214b: 4067 bytes : minStrip debug display text
+  20220214c: 3825 bytes : added prop dependencies ArkGF0, ArkMFb, ArkSF0
+]]
 
 --[[
 ArkNet Theory:
@@ -139,16 +157,22 @@ local G, prop_getText, gmatch, unpack
   , "string", "table", "number"
 
 function main()
-  local abs, min, max, sqrt, ceil, floor, sin, cos, atan, pi
-    = getTableValues(math, --prop_getText("ArkMF0")
-    "abs,min,max,sqrt,ceil,floor,sin,cos,atan,pi")
+  local abs,min,max,sqrt,ceil,floor,sin,cos,atan,asin,pi
+    = getTableValues(math, 
+      prop_getText("ArkMFb")
+      --"abs,min,max,sqrt,ceil,floor,sin,cos,atan,asin,pi"
+    )
   _ = floor(pi)==3 or pi() -- sanity check
 
   local radPerTurn, degPerTurn = pi * 2, 360
 
-  local getNumber, getBool, setNumber, setBool, format, type, screenToMap, mapToScreen
-    = getTableValues(G, --prop_getText("ArkGF0")
-      "input.getNumber,input.getBool,output.setNumber,output.setBool,string.format,type,map.screenToMap,map.mapToScreen")
+  --local getNumber, getBool, setNumber, setBool, format, type, screenToMap, mapToScreen
+  local getNumber,getBool,setNumber,setBool,prop_getNumber,format,type,string_sub
+    = getTableValues(G, 
+      prop_getText("ArkGF0")
+      --GF0:"input.getNumber,input.getBool,output.setNumber,output.setBool,property.getNumber,string.format,type,string.sub"
+      --was:"input.getNumber,input.getBool,output.setNumber,output.setBool,string.format,type,map.screenToMap,map.mapToScreen")
+    )
 
   local numberList = {}
   for i=1,30 do numberList[i]=i end
@@ -332,7 +356,7 @@ function main()
     vAltHoldOn = hotKeys[3]
 
     if abs(controlPitch)>0.1 and abs(thisTickData[_pitch])<0.1 and vAltHoldOn then
-      vAltHold = sAlt
+      vAltHold = thisTickData[_altC]
     end
 
     if vAltHoldOn and actuallyNever then
@@ -358,11 +382,16 @@ function main()
   end
 
   do -- screen api available inside this block
-    local F, setColor, drawLine, drawCircle, drawCircleF
-    , drawRect, drawRectF,drawTriangleF,drawText,drawTextBox
-    , screen_getWidth, screen_getHeight  
-    = 255, getTableValues(screen,--prop_getText("ArkSF0")
-      "setColor,drawLine,drawCircle,drawCircleF,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight")
+    local F
+      , setColor, drawLine
+      , drawRect, drawRectF,drawTriangleF,drawText,drawTextBox
+      , screen_getWidth, screen_getHeight  
+      -- removed: , drawCircle, drawCircleF
+      = 255, getTableValues(screen,
+        prop_getText("ArkSF0")
+        --SF0:"setColor,drawLine,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight"
+        --was:"setColor,drawLine,drawCircle,drawCircleF,drawRect,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight")
+      )      
 
     local cSolidWhite
       , cRed, cGreen, cBlue, cMagenta
@@ -409,24 +438,31 @@ function main()
       --printText(format("Screen %i/%i" ,screensRendered, screenCount))
       betterSetColor(lookTrigger and cGreen or cWhite)
       
+
+    --printText(format("P: %.2f=%.2f+%.2f", controlPitch, controlPitch - sasPitch, sasPitch))
+    --printText(format("M: %.2f,%.2f", thisTickData[_lookX], thisTickData[_lookY]))
+
+--[[minStrip]]      
       printText(format("%.2f,%.2f", thisTickData[_lookX]*360, thisTickData[_lookY]*360))
-      --printText(format("Pit: %.2f", thisTickData[_pitch] * 360))
       printText(format("Rol: %.2f", thisTickData[_roll] * 360))
       printText(format("Alt: %.2f", thisTickData[_altC]))
       betterSetColor(vAltHoldOn and cGreen or cWhite)
       printText(format("AHold: %.2f", vAltHold))
-      --printText(format("P: %.2f=%.2f+%.2f", controlPitch, controlPitch - sasPitch, sasPitch))
       
       printText(format("OutRoll: %.2f", controlRoll))
-      --printText(format("M: %.2f,%.2f", thisTickData[_lookX], thisTickData[_lookY]))
       printText(format("Pitch: %.2f", thisTickData[_pitch] * 360))
       printText(format("PRate: %.2f", thisTickData.d[_pitch] * 360))
       printText(format("PTarget: %.2f", thisTickData.t[_pitch] * 360))
       printText(format("PTRate: %.2f", thisTickData.td[_pitch] * 360))
-      printText(format("tmath: %.4f", thisTickData.d[_pitch] - thisTickData.td[_pitch]))
       printText(format("SasPitch: %.2f", sasPitch))
       printText(format("OutPitch: %.2f", controlPitch))
       printText(format("ClimbRate: %.2f", thisTickData.d[_altC] or 0))
+
+--[[endMinStrip]]
+
+
+      printText(format("tmath: %.4f", thisTickData.d[_pitch] - thisTickData.td[_pitch]))
+
       --, canardPitch, , controlYaw
       
       

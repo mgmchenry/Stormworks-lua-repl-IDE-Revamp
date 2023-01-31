@@ -2,197 +2,15 @@
 -- V 0.4 Michael McHenry 2019-06-07
 os.execute("clear")
 
--- why is repl.it on Lua 5.1 still?
-pack = pack or function(...)
-  return { n = select("#", ...), ... }
-end
-
-_ENV = _G
-
-writeLine = print
-expand = function(list, depth, prefix)
-  depth = depth or 1
-  prefix = (prefix or "") .. "->"
-  for k,v,sv in pairs(list) do
-    sv = string.sub(tostring(v),1,20)
-    --print("key",k, "value", v)
-    writeLine(prefix .. string.format("key: %s Value: %s Type: %s", k, sv, type(v)))
-    if depth>1 and type(v)=="table" then
-	    if v~=_ENV and v~=list then
-        writeLine(prefix .. string.format("  %s table values", k))
-		    expand(v, depth-1, prefix)
-      else
-        writeLine(prefix .. string.format("  %s is a nested table", k))
-	    end
-    end
-  end
-  if # list > 0 then
-    writeLine("Array part size: "..tostring(# list))
-    for i,v in ipairs(list) do
-      v = string.sub(tostring(v),1,20)
-      writeLine(" i:".. string.format("%02i",i) .." Value: "..v)
-    end
-  end
-end
-
-
-local function getStackInfo(levelsUp)
-    local inspectLevel = 1 + (levelsUp or 1)
-    local info, stackInfo = {}, {}
-
-    while info do
-      info = debug.getinfo(inspectLevel+1)
-      if not info then
-        --print("End of stack: " .. tostring(inspectLevel))
-      else
-        inspectLevel = inspectLevel + 1
-        local infoText = string.format(
-          info.currentline > 0 and "%s:%s " or "%s:(%s) "
-          , info.short_src, tostring(info.currentline)
-        )
-           
-        infoText = infoText .. "in "
-          .. (
-          info.what=="main" and "main chunk " 
-            or info.what=="Lua" and info.name==nil and "lua "
-            or info.what=="Lua" and ""
-            or (info.what .. " ")
-          ) .. (
-          info.namewhat=="" and ""
-            or info.namewhat=="upvalue" and "local "
-            or (info.namewhat .. " ") 
-          )
-
-        infoText = infoText ..
-          type(info.func) .. (
-            info.name==nil and ""
-            or (" " .. info.name)
-          ) .. (
-            type(info.func)=="function" and "()"
-            or ""
-          )
-          
-        infoText = infoText .. string.format(
-          info.linedefined>0 and " [lines %i-%i]" or ""
-          , info.linedefined, info.lastlinedefined
-        )
-        stackInfo[#stackInfo+1] = infoText
-        --print(infoText)
-      end
-    end
-    return stackInfo
-end
-
-local function printStackInfo(levelsUp, levelsSkipped)
-    local stackInfo = getStackInfo(levelsUp)
-    for level=2,#stackInfo-(levelsSkipped or 0) do
-      print(stackInfo[level])
-    end
-end
---writeLine("_G global values")
---expand(_G, 3)
---die()
-
-local __STRICT = false
-local function enableStrictLua()
-  -- strict.lua
-  -- checks uses of undeclared global variables
-  -- All global variables must be 'declared' through a regular assignment
-  -- (even assigning nil will do) in a main chunk before being used
-  -- anywhere or assigned to inside a function.
-  --
-  local mt = getmetatable(_G)
-  if mt == nil then
-    mt = {}
-    setmetatable(_G, mt)
-  end
-
-  __STRICT = true
-    
-  mt.__declared = {}
-
-  mt.__newindex = function (t, n, v)
-    if __STRICT and not mt.__declared[n] then
-      local callerInfo = debug.getinfo(2, "S")
-      if callerInfo==nil then
-        if string.sub(n,1,7)=="_PROMPT" then
-          --print("setting prompt on exit is normal")
-        else
-          print("attempt to assign undeclared variable and callerInfo is nil")
-          --print(debug.traceback())
-          printStackInfo(1,0)
-          print(t,n,v)
-        end
-      elseif callerInfo.what ~= "main" and callerInfo.what ~= "C" then
-        --error
-        print("assign to undeclared variable '"..n.."'", 2)
-      end
-      mt.__declared[n] = true
-    end
-    rawset(t, n, v)
-  end
-
-    
-  mt.__index = function (t, n)
-    if not mt.__declared[n] and debug.getinfo(2, "S").what ~= "C" then
-      --error
-      print("variable '"..n.."' is not declared", 2)
-      printStackInfo(1,0)
-    end
-    return rawget(t, n)
-  end
-
-  local function global(...)
-    for _, v in ipairs{...} do mt.__declared[v] = true end
-  end
-end
-
-
 inValues, outValues, inBools, outBools = {}, {}, {}, {}
-table.unpack = table.unpack or unpack
 
-enableStrictLua()
 -- Set up SW environment
-dofile("Stormworks_Stub.lua")
 
-propValues["BaseIndex"] = 1
---[[
-propValues["Ark0"] =
-[ [
-string,math,input,output,property
-,tostring,tonumber,ipairs,pairs
-,input.getNumber,input.getBool,output.setNumber
-] ]
-propValues["Ark1"] =
-[ [
-,math.abs,math.sin,math.cos,math.max,math.min
-,math.atan,math.sqrt,math.floor,math.pi
-] ] 
---]]
-propValues["Ark0"] =
-[[
-string,math,input,output,property,screen
-,tostring,tonumber,ipairs,pairs,string.format
-,input.getNumber,input.getBool,output.setNumber
-]]
-propValues["Ark1"] =
-[[
-,screen.drawTextBox,screen.drawLine,screen.getWidth,screen.getHeight,screen.setColor
-]] 
-propValues["Ark2"] =
-[[
-,math.abs,math.sin,math.cos,math.max,math.min
-,math.atan,math.sqrt,math.floor,math.pi
-]] 
-propValues["ArkSF0"] =
-[[
-setColor,drawLine,drawCircle,drawCircleF,drawRectF,drawTriangleF,drawText,drawTextBox,getWidth,getHeight
-]]
-propValues["ArkGF0"] = 
-"map.screenToMap,map.mapToScreen,input.getNumber,input.getBool,output.setNumber,output.setBool,string.format,type"
+local swAPI = dofile("Stormworks_Stub.lua")
+print("swAPI", type(swAPI), tostring(swAPI))
 
-propValues["ArkMF0"] =
-"abs,min,max,sqrt,ceil,floor,sin,cos,atan,pi"
+_ = nil
+_G["_"] = nil
 
 --dofile("QuadFlightControl.V0.07.15.lua")
 --dofile("ScaleController.V2.lua")
@@ -201,10 +19,49 @@ propValues["ArkMF0"] =
 --dofile("FlightControl/QuadTiltFlightControl.V0.TinySig.lua")
 --dofile("Experiments/keyInputAxisInfo.lua")
 
-local baseFile = "ArkNet/ArkNetRadarTurretGPSDisplay"
-ArkLuaLoadFile = baseFile .. ".lua"
+local buildFiles = {
+--  {baseFile = "ArkNet/ArkNetHostAircraftControl"}
+--  {baseFile = "ArkNet/ArkNetRadarTurretGPS"} 
+--  {baseFile = "ArkNet/ArkNetGPSRadarIntegrator"}
+  ,{baseFile = "ArkNet/ArkNetGPSRadarScienceLab"}
+--  , {baseFile = "ArkNet/ArkNetRadarTurretGPSDisplay"}
+}
 
-dofile("Experiments/loaderMC.lua")
+ArkLuaLoadFile = "nope"
+
+
+local minify = dofile("BorrowedCode/stravant_luaMinify.lua")
+
+for i, buildFile in ipairs(buildFiles) do
+  do
+    -- todo: make these work local proper  
+    -- local 
+    ArkLuaLoadFile = buildFile.baseFile .. ".lua"
+    --local 
+    onTest = function() print("no tests defined for " .. ArkLuaLoadFile) end
+    --local minify = nil
+
+    dofile("Experiments/loaderMC.lua")
+
+    buildFile.onTest = onTest
+  end
+  do    
+    buildFile.onTest(inValues, outValues, inBools, outBools, runTest)
+
+    local baseFile, minFile,err
+      = buildFile.baseFile .. ".lua"
+      , io.open( buildFile.baseFile .. ".min.lua", "wb" )
+      
+    if err then return err end
+    minFile:write("--minifying \n")
+
+    minify("minify", baseFile, minFile)
+
+    minFile:write( "--minified \n" )
+    minFile:close()
+  end
+end
+
 --dofile("ArkNet/ArkNetMCBootstrap.lua")
 --dofile("Experiments/CompositeDebugDisplay.lua")
 --dofile("Experiments/SWGlobals.lua")
@@ -216,18 +73,6 @@ dofile("Experiments/loaderMC.lua")
 --dofile("RailPulseEncoder.lua")
 --dofile("OnOffDecoder.lua")
 
-onTest(inValues, outValues, inBools, outBools, runTest)
-local minify = dofile("BorrowedCode/stravant_luaMinify.lua")
-
-
-local minFile,err = io.open( baseFile .. ".min.lua", "wb" )
-if err then return err end
-minFile:write("--minifying \n")
-
-minify("minify", ArkLuaLoadFile, minFile)
-
-minFile:write( "--minified \n" )
-minFile:close()
 --runTest(function() onTick() end, "onTick")
 --runTest(function() onDraw() end, "onDraw")
 -- Those return without doing anything because inValues are nil

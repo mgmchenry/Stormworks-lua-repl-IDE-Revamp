@@ -1,6 +1,6 @@
 -- Stormworks ArkNet Radar Turret Control
 -- V 01.01 b0 Michael McHenry 2022-10-07
-source={"ArkNetRadGPSTurretx01e","repl.it/@mgmchenry"}
+source={"ArkNetRadGPSTurretx01g","repl.it/@mgmchenry"}
 
 --[[
 
@@ -212,6 +212,8 @@ function main()
     if s1.h[4] ~= s2.h[4] then cz=0 end
     tc[1]=ts[2]*-12*cz-cx
     --tc[2]=ts[3]*-4*cz-cy
+    -- handle absent rotation state information for compact pivots
+    if ts[3]==0 then ts[3] = tc[2] or 0 end
     tc[6]= (ts[3]*-4*cz-cy)    
     tc[2]=clamp(tc[6]*stickyY 
       + tc[6] * (stickyY>0 and 1/60 or 1)
