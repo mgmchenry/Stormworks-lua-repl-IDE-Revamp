@@ -1,0 +1,217 @@
+// find loadlibs[]
+// first find "package" 0x00 "coroutine"
+// 70 61 63 6B 61 67 65 00 63 6F 72 6F 75 74 69 6E 65
+log "searching for [package coroutine]"
+findallmem 0, "70 61 63 6B 61 67 65 00 63 6F 72 6F 75 74 69 6E 65"
+
+// how many? should be just one
+log "found {ref.count()} starting at {ref.addr(0)}"
+log [{s:ref.addr(0)}]
+
+dump ref.addr(0)
+$s_package = ref.addr(0)
+// set the label
+labelset $s_package, s_package
+
+log finding references to s_package
+findmemall 0, {bswap($s_package)}
+log "found {ref.count()} starting at {ref.addr(0)}"
+$ref_s_package = ref.addr(0);
+dump $ref_s_package;
+labelset $ref_s_package, ref_s_package;
+
+log "looking back to start of loadlibs[] table";
+$loadlibs = $ref_s_package - 0x10;
+dump $loadlibs;
+labelset $loadlibs, loadlibs[];
+
+alloc 200 ; $scriptStrings = result;
+log "alloc scriptStrings: {$scriptStrings} {$lastalloc}";
+
+$refPair= $loadlibs;
+$luaopen_base = ptr($loadlibs + 0x08);
+
+strset $labelPrefix, "luaopen_";
+strcpy $scriptStrings, $labelPrefix;
+
+call labelFunctions
+
+// would be nice to check if ptr($loadlibs) is "_G"
+disasm $luaopen_base;
+labelset $luaopen_base, luaopen_base;
+
+// "ipairs..loadfile" 69 70 61 69 72 73 00 00 6C 6F 61 64 66 69 6C 65
+findmemall 0, "69 70 61 69 72 73 00 00 6C 6F 61 64 66 69 6C 65";
+
+$s_ipairs = ref.addr(0);
+dump $s_ipairs;
+labelset $s_ipairs, s_ipairs;
+findmemall 0, {bswap($s_ipairs)};
+
+$basesubset_funcs = ref.addr(0);
+$basesubset_funcs_ipairs = ref.addr(1);
+dump $basesubset_funcs;
+labelset $basesubset_funcs, luaopen_basesubset_funcs[];
+labelset $basesubset_funcs_ipairs, luaopen_basesubset_funcs[]ipairs;
+
+$refPair= $basesubset_funcs;
+
+strset $labelPrefix, "lua_base__";
+strcpy $scriptStrings, $labelPrefix;
+
+call labelFunctions
+
+
+call labelLibFuncs
+
+
+log "looking for luaopen_basesubset reference to funcs[]"
+//findref luaopen_basesubset_funcs[], mem.base(luaopen_base)
+findref $basesubset_funcs, mem.base(mod.entry(mod.main()));
+$ref_basesubset_funcs = ref.addr(0)
+disasm $ref_basesubset_funcs;
+
+// refresh exanalyse to find proper start of function
+$analyzeAddr = $ref_basesubset_funcs;
+analr $analyzeAddr;
+log "inst:{x:$analyzeAddr} funcStart:{func.start($analyzeAddr)} funcEnd:{func.end($analyzeAddr)} funcSize: {func.end($analyzeAddr) - func.start($analyzeAddr)}";
+
+$luaopen_base_subset = func.start($ref_basesubset_funcs);
+disasm $luaopen_base_subset;
+labelset $luaopen_base_subset, luaopen_base_subset;
+
+findref $luaopen_base_subset, mem.base(mod.entry(mod.main()));
+$mc_call_openlua = ref.addr(0);
+$addon_call_openlua = ref.addr(1);
+
+disasm $mc_call_openlua;
+labelset $mc_call_openlua, swlua_mc_openlua;
+labelset $addon_call_openlua, swlua_addon_openlua;
+
+log {i:$mc_call_openlua};
+msgyn "Modify mc lua to call standard lua luaopen_base instead of sw luaopen_base_subset?";
+cmp $result, 0x0
+jne updateSWluaopen_base
+
+
+free $scriptStrings
+ret
+
+updateSWluaopen_base:
+// change sw default mc lua init call from luaopen_base_subset to luaopen_base
+log "call {p:$luaopen_base}"
+asm $mc_call_openlua, "call 0x{p:$luaopen_base"}, true;
+log {i:$mc_call_openlua};
+disasm $mc_call_openlua;
+
+ret
+
+labelLibFuncs:
+
+log "searching memory for 'assert......collectgarba'";
+// 0000747265737361  assert..  
+// 6C6C6F6300000000  ....coll  
+// 6162726167746365  ectgarba  
+// "assert......collectgarba" 61 73 73 65 72 74 00 00 00 00 00 00 63 6F 6C 6C 65 63 74 67 61 72 62 61
+findmemall 0, "61 73 73 65 72 74 00 00 00 00 00 00 63 6F 6C 6C 65 63 74 67 61 72 62 61";
+
+$s_assert = ref.addr(0);
+dump $s_assert;
+labelset $s_assert, s_assert;
+findmemall 0, {bswap($s_assert)};
+
+$luabase_funcs = ref.addr(0);
+dump $luabase_funcs;
+labelset $luabase_funcs, luabase_funcs[];
+
+$refPair= $luabase_funcs;
+
+strset $labelPrefix, "lua_base__";
+strcpy $scriptStrings, $labelPrefix;
+log "relabeling full set of lua_base__ functions"
+call labelFunctions
+
+//
+// 00000065736F6C63  close...  
+// 0000006873756C66  flush...  
+log "searching memory for 'close...flush...'";
+// 63 6C 6F 73 65 00 00 00 66 6C 75 73 68 00 00 00
+findmemall 0, "63 6C 6F 73 65 00 00 00 66 6C 75 73 68 00 00 00";
+
+$s_close = ref.addr(0);
+dump $s_close;
+labelset $s_close, s_close;
+findmemall 0, {bswap($s_close)};
+
+$lua_io_funcs = ref.addr(0);
+dump $lua_io_funcs;
+labelset $lua_io_funcs, lua_io_funcs[];
+
+$refPair= $lua_io_funcs;
+
+strset $labelPrefix, "lua_io__";
+strcpy $scriptStrings, $labelPrefix;
+log "relabeling lua_io__ functions"
+call labelFunctions
+//
+
+
+//
+// 0000006B636F6C63  clock...  
+// 0000000065746164  date....  
+log "searching memory for 'clock...date....'";
+// 63 6C 6F 63 6B 00 00 00 64 61 74 65 00 00 00 00
+findmemall 0, "63 6C 6F 63 6B 00 00 00 64 61 74 65 00 00 00 00";
+
+$s_clock = ref.addr(0);
+dump $s_clock;
+labelset $s_clock, s_clock;
+findmemall 0, {bswap($s_clock)};
+
+$lua_os_funcs = ref.addr(0);
+dump $lua_os_funcs;
+labelset $lua_os_funcs, lua_os_funcs[];
+
+$refPair= $lua_os_funcs;
+
+strset $labelPrefix, "lua_os__";
+strcpy $scriptStrings, $labelPrefix;
+log "relabeling lua_os__ functions"
+call labelFunctions
+//
+
+
+ret
+
+labelFunctions:
+log "labeling functions starting at {modname@ $refPair}:{$refPair}";
+
+lf_loop:
+cmp qword($refPair), 0x00;
+log "{modname@ $refPair}:{x:$refPair} {x:qword($refPair)} BS[{$_BS_FLAG}] EZ[{$_EZ_FLAG}]";
+jne lf_isValid
+ret
+
+lf_isValid:
+log "name:[{ansi@ ptr($refPair)}] label:[{ansi@ $scriptStrings}{ansi@ ptr($refPair)}]";
+dump ptr($refPair);
+disasm ptr($refPair + 0x08);
+//functiondel ptr($refPair + 0x08)
+//analr ptr($refPair + 0x08)
+
+msgyn "save label:[{ansi@ $scriptStrings}{ansi@ ptr($refPair)}]?";
+cmp $result, 0x0
+jne lf_accept
+ret
+
+lf_accept:
+//log "save label:[{ansi@ $scriptStrings}{ansi@ ptr($refPair)}]?";
+labelset ptr($refPair), s_{ansi@ ptr($refPair)};
+labelset ptr($refPair + 0x08), {ansi@ $scriptStrings}{ansi@ ptr($refPair)};
+
+$refPair = $refPair + 0x10;
+log "refPair {x:$refPair}[{x:qword($refPair)}] : {modname@ ptr($refPair)} : {mem.valid(ptr($refPair))}";
+jmp lf_loop
+
+
+

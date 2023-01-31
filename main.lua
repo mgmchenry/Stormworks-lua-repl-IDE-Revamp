@@ -22,8 +22,8 @@ _G["_"] = nil
 local buildFiles = {
 --  {baseFile = "ArkNet/ArkNetHostAircraftControl"}
 --  {baseFile = "ArkNet/ArkNetRadarTurretGPS"} 
---  {baseFile = "ArkNet/ArkNetGPSRadarIntegrator"}
-  ,{baseFile = "ArkNet/ArkNetGPSRadarScienceLab"}
+  {baseFile = "ArkNet/ArkNetGPSRadarScienceLab"}
+ , {baseFile = "ArkNet/ArkNetGPSRadarIntegrator"}
 --  , {baseFile = "ArkNet/ArkNetRadarTurretGPSDisplay"}
 }
 
