@@ -93,6 +93,15 @@ msgyn "Modify mc lua to call standard lua luaopen_base instead of sw luaopen_bas
 cmp $result, 0x0
 jne updateSWluaopen_base
 
+modifyAddonLuaPrompt:
+disasm $addon_call_openlua;
+log {i:$addon_call_openlua};
+msgyn "Modify addon lua to call standard lua luaopen_base instead of sw luaopen_base_subset?";
+cmp $result, 0x0
+jne updateSWAddonluaopen_base
+
+
+cleanup:
 
 free $scriptStrings
 ret
@@ -104,7 +113,17 @@ asm $mc_call_openlua, "call 0x{p:$luaopen_base"}, true;
 log {i:$mc_call_openlua};
 disasm $mc_call_openlua;
 
-ret
+jmp modifyAddonLuaPrompt
+
+updateSWAddonluaopen_base:
+// change sw default addon lua init call from luaopen_base_subset to luaopen_base
+log "call {p:$luaopen_base}"
+asm $addon_call_openlua, "call 0x{p:$luaopen_base"}, true;
+log {i:$addon_call_openlua};
+disasm $addon_call_openlua;
+
+jmp cleanup
+
 
 labelLibFuncs:
 
@@ -189,20 +208,27 @@ log "labeling functions starting at {modname@ $refPair}:{$refPair}";
 lf_loop:
 cmp qword($refPair), 0x00;
 log "{modname@ $refPair}:{x:$refPair} {x:qword($refPair)} BS[{$_BS_FLAG}] EZ[{$_EZ_FLAG}]";
-jne lf_isValid
+jne lf_isValid1
+log "{modname@ $refPair}:{x:$refPair} {x:qword($refPair)} is null string. End of function array found"]
+ret
+lf_isValid1:
+cmp qword($refPair+0x08), 0x00;
+log "{modname@ $refPair}:{x:$refPair} {x:qword($refPair)} BS[{$_BS_FLAG}] EZ[{$_EZ_FLAG}]";
+jne lf_isValid2
+log "{modname@ $refPair}:{x:$refPair+08} {x:qword($refPair+08)} is null function. End of function array found"]
 ret
 
-lf_isValid:
+lf_isValid2:
 log "name:[{ansi@ ptr($refPair)}] label:[{ansi@ $scriptStrings}{ansi@ ptr($refPair)}]";
 dump ptr($refPair);
 disasm ptr($refPair + 0x08);
 //functiondel ptr($refPair + 0x08)
 //analr ptr($refPair + 0x08)
 
-msgyn "save label:[{ansi@ $scriptStrings}{ansi@ ptr($refPair)}]?";
-cmp $result, 0x0
-jne lf_accept
-ret
+//msgyn "save label:[{ansi@ $scriptStrings}{ansi@ ptr($refPair)}]?";
+//cmp $result, 0x0
+//jne lf_accept
+//ret
 
 lf_accept:
 //log "save label:[{ansi@ $scriptStrings}{ansi@ ptr($refPair)}]?";
