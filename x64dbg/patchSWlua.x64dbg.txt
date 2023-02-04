@@ -84,9 +84,154 @@ findref $luaopen_base_subset, mem.base(mod.entry(mod.main()));
 $mc_call_openlua = ref.addr(0);
 $addon_call_openlua = ref.addr(1);
 
+
 disasm $mc_call_openlua;
 labelset $mc_call_openlua, swlua_mc_openlua;
 labelset $addon_call_openlua, swlua_addon_openlua;
+
+// find lua_rawgeti in luaopen_base
+disasm $luaopen_base; disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel())
+log "checking for call to lua_rawgeti {dis.iscall(dis.sel())} {dis.len(dis.sel())} {dis.imm(dis.sel())}"
+cmp 1,dis.iscall(dis.sel())
+jne patchPrompt
+labelset dis.imm(dis.sel()), lua_rawgeti
+
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+log "checking for call to luaL_checkstack {dis.iscall(dis.sel())} {dis.len(dis.sel())} {dis.imm(dis.sel())}"
+cmp 1,dis.iscall(dis.sel())
+jne patchPrompt
+labelset dis.imm(dis.sel()), luaL_checkstack
+
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+log "checking for call to lua_pushcclosure {dis.iscall(dis.sel())} {dis.len(dis.sel())} {dis.imm(dis.sel())}"
+cmp 1,dis.iscall(dis.sel())
+jne patchPrompt
+labelset dis.imm(dis.sel()), lua_pushcclosure
+
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); 
+log "checking for call to _lua_index2addr {dis.iscall(dis.sel())} {dis.len(dis.sel())} {dis.imm(dis.sel())}"
+cmp 1,dis.iscall(dis.sel())
+jne patchPrompt
+labelset dis.imm(dis.sel()), _lua_index2addr
+
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+log "checking for call to lua_setfield {dis.iscall(dis.sel())} {dis.len(dis.sel())} {dis.imm(dis.sel())}"
+cmp 1,dis.iscall(dis.sel())
+jne patchPrompt
+labelset dis.imm(dis.sel()), lua_setfield
+
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+cmp _lua_index2addr,dis.imm(dis.sel())
+jne patchPrompt
+
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+cmp _lua_index2addr,dis.imm(dis.sel())
+jne patchPrompt
+
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+cmp lua_setfield,dis.imm(dis.sel())
+jne patchPrompt
+
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+log "checking for call to luaS_new {dis.iscall(dis.sel())} {dis.len(dis.sel())} {dis.imm(dis.sel())}"
+cmp 1,dis.iscall(dis.sel())
+jne patchPrompt
+labelset dis.imm(dis.sel()), luaS_new
+
+//11 instructions down to call luaC_step
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+log "checking for call to luaC_step {dis.iscall(dis.sel())} {dis.len(dis.sel())} {dis.imm(dis.sel())}"
+cmp 1,dis.iscall(dis.sel())
+jne patchPrompt
+labelset dis.imm(dis.sel()), luaC_step
+
+//3 instructions down to call _lua_index2addr
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+cmp _lua_index2addr,dis.imm(dis.sel())
+jne patchPrompt
+
+//4 instructions down to call lua_setfield
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+cmp lua_setfield,dis.imm(dis.sel())
+jne patchPrompt
+
+//9 instructions down to call luaL_error
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+disasm dis.next(dis.sel());
+log "checking for call to luaL_error {dis.iscall(dis.sel())} {dis.len(dis.sel())} {dis.imm(dis.sel())}"
+cmp 1,dis.iscall(dis.sel())
+jne patchPrompt
+labelset dis.imm(dis.sel()), luaL_error
+
+//labelset :$0x000000000001DDC0, lua_rawgeti; disasm lua_rawgeti
+//labelset :$0x000000000001D500, luaL_checkstack; disasm luaL_checkstack
+//labelset :$0x000000000001DB40, lua_pushcclosure; disasm lua_pushcclosure
+//labelset :$0x000000000001D410, _lua_index2addr; disasm _lua_index2addr
+//labelset :$0x000000000001DED0, lua_setfield; disasm lua_setfield
+//labelset :$0x000000000003B1B0, luaS_new; disasm luaS_new
+//labelset :$0x000000000002BD50, luaC_step; disasm luaC_step
+//labelset :$0x000000000001F860, luaL_error; disasm luaL_error
+
+//labelset :$0x0000000000031B30, luaM_realloc; disasm luaM_realloc
+//labelset :$0x0000000000040620, luaF_newCclosure; disasm luaF_newCclosure
+//labelset :$0x00000000000441C0, luaV_finishget; disasm luaV_finishget
+
+msgyn "Modify luaopen_base_subset to open all lua libraries including os, io, debug, etc?";
+cmp $result, 0x1
+jne patchPrompt
+
+msg "I hope you know what you're doing lol";
+
+disasm $luaopen_base_subset;
+// down 8 instructions to lea rbx,qword ptr ds:[<luaopen_basesubset_funcs[]>]
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+log "before: {i:dis.sel()}";
+asm dis.sel(), "lea rbx,qword ptr ds:[0x{p:loadlibs[]}]", true;
+log "after: {i:dis.sel()}";
+
+
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+// remove call <stormworks64.luaL_checkstack>
+log "removing: {i:dis.sel()}";
+$disNext = dis.next(dis.sel())
+asm dis.sel(), "nop", true;
+disasm disNext
+
+// remove test eax:eax
+log "removing: {i:dis.sel()}";
+$disNext = dis.next(dis.sel())
+asm dis.sel(), "nop", true;
+disasm disNext
+
+// remove je xxx
+log "removing: {i:dis.sel()}";
+$disNext = dis.next(dis.sel())
+asm dis.sel(), "nop", true;
+disasm disNext
+
+// down 6 instructions to
+// call <stormworks64.lua_pushcclosure>                    |
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+disasm dis.next(dis.sel()); disasm dis.next(dis.sel());
+log "before: {i:dis.sel()}";
+cmp lua_pushcclosure,dis.imm(dis.sel())
+$disNext = dis.next(dis.sel())
+asm dis.sel(), "call rdx", true;
+log "after: {i:dis.sel()}";
+disasm disNext
+
+
+msg "I think it worked? good luck!";
+jmp cleanup
+
+patchPrompt:
 
 log {i:$mc_call_openlua};
 msgyn "Modify mc lua to call standard lua luaopen_base instead of sw luaopen_base_subset?";
@@ -238,6 +383,3 @@ labelset ptr($refPair + 0x08), {ansi@ $scriptStrings}{ansi@ ptr($refPair)};
 $refPair = $refPair + 0x10;
 log "refPair {x:$refPair}[{x:qword($refPair)}] : {modname@ ptr($refPair)} : {mem.valid(ptr($refPair))}";
 jmp lf_loop
-
-
-
